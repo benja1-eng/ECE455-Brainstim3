@@ -1,0 +1,646 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>PicoW DAC — Wave Generator</title>
+<style>
+  :root {
+    --bg: #0b0d10;
+    --panel: #14181d;
+    --panel-2: #1a1f26;
+    --border: #242a33;
+    --fg: #e6e9ef;
+    --muted: #8a93a0;
+    --accent: #4ade80;      /* green */
+    --accent-2: #38bdf8;    /* cyan */
+    --danger: #ef4444;
+    --warn: #f59e0b;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; min-height: 100vh;
+    background:
+      radial-gradient(1200px 600px at 10% -10%, rgba(56,189,248,0.08), transparent 60%),
+      radial-gradient(900px 500px at 110% 20%, rgba(74,222,128,0.06), transparent 60%),
+      var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 32px 24px 64px;
+  }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 16px; margin-bottom: 24px;
+  }
+  header h1 {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+  }
+  header h1 .sub {
+    color: var(--muted);
+    font-weight: 400;
+    margin-left: 6px;
+    font-size: 14px;
+  }
+
+  .conn {
+    display: flex; align-items: center; gap: 12px;
+  }
+  .dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #4b5563; box-shadow: 0 0 0 4px rgba(75,85,99,0.15);
+    transition: all .2s;
+  }
+  .dot.ok { background: var(--accent); box-shadow: 0 0 0 4px rgba(74,222,128,0.15); }
+  .dot.err { background: var(--danger); box-shadow: 0 0 0 4px rgba(239,68,68,0.15); }
+  .dot.pend { background: var(--warn); box-shadow: 0 0 0 4px rgba(245,158,11,0.15); }
+  .conn .label { color: var(--muted); font-size: 13px; font-family: var(--mono); }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1.3fr 1fr;
+    gap: 20px;
+  }
+  @media (max-width: 820px) { .grid { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px;
+  }
+  .card h2 {
+    margin: 0 0 14px;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.6px;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  .tabs {
+    display: flex; gap: 6px; padding: 4px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 16px;
+    width: fit-content;
+  }
+  .tab {
+    padding: 8px 14px; font-size: 13px;
+    border-radius: 7px; cursor: pointer; color: var(--muted);
+    border: 1px solid transparent;
+    user-select: none;
+  }
+  .tab.active {
+    background: var(--panel);
+    color: var(--fg);
+    border-color: var(--border);
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: 140px 1fr 110px;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    border-top: 1px dashed var(--border);
+  }
+  .row:first-of-type { border-top: none; }
+  .row label {
+    font-size: 13px; color: var(--muted);
+  }
+  .row label .unit { color: #555e6b; font-family: var(--mono); margin-left: 4px; }
+
+  input[type="range"] {
+    -webkit-appearance: none; width: 100%; background: transparent;
+  }
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 4px; background: #2a323d; border-radius: 2px;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--accent-2); cursor: pointer;
+    margin-top: -6px; border: none;
+    box-shadow: 0 0 0 3px rgba(56,189,248,0.18);
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--accent-2); cursor: pointer; border: none;
+  }
+
+  input[type="number"] {
+    width: 100%;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    color: var(--fg);
+    font-family: var(--mono);
+    font-size: 13px;
+    text-align: right;
+  }
+  input[type="number"]:focus { outline: none; border-color: var(--accent-2); }
+
+  .derived {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 10px; margin-top: 10px;
+  }
+  .metric {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+  .metric .k { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; }
+  .metric .v { font-family: var(--mono); font-size: 16px; margin-top: 2px; }
+
+  .actions {
+    display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px;
+  }
+  button {
+    padding: 11px 16px;
+    font-size: 13px; font-weight: 600;
+    border-radius: 9px; cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--panel-2);
+    color: var(--fg);
+    transition: transform .05s, background .15s, border-color .15s;
+  }
+  button:hover { border-color: #3a4350; }
+  button:active { transform: translateY(1px); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button.primary {
+    background: linear-gradient(180deg, #22c55e, #16a34a);
+    border-color: #16a34a; color: #04240f;
+  }
+  button.secondary {
+    background: linear-gradient(180deg, #38bdf8, #0284c7);
+    border-color: #0284c7; color: #052031;
+  }
+  button.warn {
+    background: linear-gradient(180deg, #f59e0b, #b45309);
+    border-color: #b45309; color: #241200;
+  }
+  button.danger {
+    background: linear-gradient(180deg, #ef4444, #b91c1c);
+    border-color: #b91c1c; color: #210606;
+  }
+
+  .state {
+    display: grid; grid-template-columns: repeat(2, 1fr);
+    gap: 10px; margin-top: 4px;
+  }
+  .state .metric .v { font-size: 15px; }
+  .state .big { grid-column: 1 / -1; }
+
+  pre.log {
+    background: #05070a;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+    height: 240px;
+    overflow: auto;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.5;
+    color: #b5bcc8;
+    white-space: pre-wrap;
+  }
+  pre.log .tx { color: #38bdf8; }
+  pre.log .rx { color: #4ade80; }
+  pre.log .err { color: #f87171; }
+  pre.log .sys { color: #a78bfa; }
+
+  .footer {
+    color: var(--muted); font-size: 12px;
+    margin-top: 24px; text-align: center;
+  }
+  .footer code {
+    font-family: var(--mono);
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    padding: 1px 6px; border-radius: 5px;
+  }
+
+  .banner {
+    display: none;
+    padding: 10px 14px; margin-bottom: 16px;
+    background: rgba(239,68,68,0.08);
+    border: 1px solid rgba(239,68,68,0.3);
+    color: #fecaca;
+    border-radius: 10px;
+    font-size: 13px;
+  }
+  .banner.show { display: block; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>PicoW DAC <span class="sub">Wave Generator over BLE</span></h1>
+    <div class="conn">
+      <span id="dot" class="dot"></span>
+      <span id="connText" class="label">disconnected</span>
+      <button id="btnConnect" class="secondary">Connect</button>
+      <button id="btnDisconnect" disabled>Disconnect</button>
+    </div>
+  </header>
+
+  <div id="bleBanner" class="banner">
+    Web Bluetooth is not available in this browser. Use desktop Chrome, Edge,
+    or Opera over <code>https://</code>, <code>file://</code>, or
+    <code>http://localhost</code>.
+  </div>
+
+  <div class="grid">
+
+    <!-- ============ LEFT: CONTROLS ============ -->
+    <section class="card">
+      <h2>Waveform</h2>
+
+      <div class="tabs" id="tabs">
+        <div class="tab active" data-mode="ti">Temporal Interference</div>
+        <div class="tab" data-mode="beat">Center + Beat</div>
+        <div class="tab" data-mode="single">Single Sine</div>
+      </div>
+
+      <!-- TI mode -->
+      <div id="pane-ti" class="pane">
+        <div class="row">
+          <label>DAC 1 freq <span class="unit">Hz</span></label>
+          <input type="range" id="ti_f1" min="100" max="10000" step="1" value="7250" />
+          <input type="number" id="ti_f1_n" min="1" max="20000" step="1" value="7250" />
+        </div>
+        <div class="row">
+          <label>DAC 2 freq <span class="unit">Hz</span></label>
+          <input type="range" id="ti_f2" min="100" max="10000" step="1" value="7260" />
+          <input type="number" id="ti_f2_n" min="1" max="20000" step="1" value="7260" />
+        </div>
+      </div>
+
+      <!-- BEAT mode -->
+      <div id="pane-beat" class="pane" style="display:none">
+        <div class="row">
+          <label>Center freq <span class="unit">Hz</span></label>
+          <input type="range" id="bt_center" min="100" max="10000" step="1" value="7255" />
+          <input type="number" id="bt_center_n" min="1" max="20000" step="1" value="7255" />
+        </div>
+        <div class="row">
+          <label>Beat freq <span class="unit">Hz</span></label>
+          <input type="range" id="bt_beat" min="0" max="200" step="0.1" value="10" />
+          <input type="number" id="bt_beat_n" min="0" max="1000" step="0.1" value="10" />
+        </div>
+      </div>
+
+      <!-- SINGLE mode -->
+      <div id="pane-single" class="pane" style="display:none">
+        <div class="row">
+          <label>DAC</label>
+          <select id="s_dac" style="
+              background: var(--panel-2); color: var(--fg);
+              border: 1px solid var(--border); border-radius: 8px;
+              padding: 8px 10px; font-family: var(--mono); font-size: 13px;">
+            <option value="1">DAC 1</option>
+            <option value="2">DAC 2</option>
+          </select>
+          <span></span>
+        </div>
+        <div class="row">
+          <label>Frequency <span class="unit">Hz</span></label>
+          <input type="range" id="s_f" min="1" max="10000" step="1" value="1000" />
+          <input type="number" id="s_f_n" min="1" max="20000" step="1" value="1000" />
+        </div>
+      </div>
+
+      <!-- Shared voltage controls -->
+      <div class="row" style="margin-top: 8px;">
+        <label>Amplitude <span class="unit">V</span></label>
+        <input type="range" id="amp" min="0" max="1.65" step="0.01" value="1.0" />
+        <input type="number" id="amp_n" min="0" max="1.65" step="0.01" value="1.0" />
+      </div>
+      <div class="row">
+        <label>Center <span class="unit">V</span></label>
+        <input type="range" id="center" min="0" max="3.3" step="0.01" value="1.65" />
+        <input type="number" id="center_n" min="0" max="3.3" step="0.01" value="1.65" />
+      </div>
+      <div class="row" title="Amplitude ramp duration applied to Start (fade-in) and Stop (fade-out). Emergency Stop is always instant.">
+        <label>Ramp <span class="unit">s</span></label>
+        <input type="range" id="ramp" min="0" max="5" step="0.1" value="1.0" />
+        <input type="number" id="ramp_n" min="0" max="10" step="0.1" value="1.0" />
+      </div>
+
+      <div class="derived" id="derived">
+        <div class="metric"><div class="k">Beat</div><div class="v" id="m_beat">—</div></div>
+        <div class="metric"><div class="k">Center f</div><div class="v" id="m_center">—</div></div>
+        <div class="metric"><div class="k">Swing</div><div class="v" id="m_swing">—</div></div>
+      </div>
+
+      <div class="actions">
+        <button id="btnStart" class="primary" disabled>Start</button>
+        <button id="btnUpdate" class="secondary" disabled title="Update frequencies on-the-fly without restarting DMA">Update Freqs</button>
+        <button id="btnStop" disabled>Stop</button>
+        <button id="btnZero" disabled>Zero</button>
+        <button id="btnWake" disabled title="Release the hardware SHDN line">Wake</button>
+        <button id="btnEstop" class="danger" disabled>EMERGENCY STOP</button>
+      </div>
+    </section>
+
+    <!-- ============ RIGHT: STATUS ============ -->
+    <section>
+      <div class="card" style="margin-bottom: 20px;">
+        <h2>Device State</h2>
+        <div class="state">
+          <div class="metric big">
+            <div class="k">Running</div>
+            <div class="v" id="st_running">—</div>
+          </div>
+          <div class="metric"><div class="k">f1</div><div class="v" id="st_f1">—</div></div>
+          <div class="metric"><div class="k">f2</div><div class="v" id="st_f2">—</div></div>
+          <div class="metric"><div class="k">Beat</div><div class="v" id="st_beat">—</div></div>
+          <div class="metric"><div class="k">Amp / Center</div><div class="v" id="st_ac">—</div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Log</h2>
+        <pre id="log" class="log"></pre>
+        <div class="actions" style="margin-top: 10px;">
+          <button id="btnPing" disabled>Ping</button>
+          <button id="btnStatus" disabled>Request Status</button>
+          <button id="btnClearLog">Clear Log</button>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <div class="footer">
+    Device: <code>PicoW_DAC</code> &middot; Service <code>0x1815</code> &middot;
+    Char <code>0x2A56</code> &middot; Commands are <code>OP|a1|a2|...</code> strings.
+  </div>
+</div>
+
+<script>
+  // ===== BLE constants (must match pico_ble_dac.py) =====
+  const SERVICE_UUID = 0x1815;
+  const CHAR_UUID    = 0x2A56;
+
+  // ===== Element refs =====
+  const $ = (id) => document.getElementById(id);
+  const dot = $('dot');
+  const connText = $('connText');
+  const btnConnect = $('btnConnect');
+  const btnDisconnect = $('btnDisconnect');
+  const btnStart = $('btnStart');
+  const btnUpdate = $('btnUpdate');
+  const btnStop = $('btnStop');
+  const btnZero = $('btnZero');
+  const btnWake = $('btnWake');
+  const btnEstop = $('btnEstop');
+  const btnPing = $('btnPing');
+  const btnStatus = $('btnStatus');
+  const btnClearLog = $('btnClearLog');
+  const logEl = $('log');
+
+  // ===== State =====
+  let bleDevice = null;
+  let bleChar = null;
+  let currentMode = 'ti';
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+
+  // ===== Log =====
+  function log(text, kind = 'sys') {
+    const ts = new Date().toLocaleTimeString();
+    const span = document.createElement('span');
+    span.className = kind;
+    span.textContent = `[${ts}] ${text}\n`;
+    logEl.appendChild(span);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+  btnClearLog.addEventListener('click', () => { logEl.innerHTML = ''; });
+
+  // ===== BLE availability check =====
+  if (!navigator.bluetooth) {
+    $('bleBanner').classList.add('show');
+    btnConnect.disabled = true;
+  }
+
+  // ===== Connection =====
+  function setConnState(state, text) {
+    dot.className = 'dot ' + (state === 'ok' ? 'ok'
+                          : state === 'err' ? 'err'
+                          : state === 'pend' ? 'pend' : '');
+    connText.textContent = text;
+    const connected = state === 'ok';
+    btnDisconnect.disabled = !connected;
+    btnConnect.disabled = connected;
+    [btnStart, btnUpdate, btnStop, btnZero, btnWake, btnEstop, btnPing, btnStatus]
+      .forEach(b => b.disabled = !connected);
+  }
+
+  async function connect() {
+    try {
+      setConnState('pend', 'requesting device...');
+      log('Requesting BLE device "PicoW_DAC"...');
+
+      bleDevice = await navigator.bluetooth.requestDevice({
+        filters: [
+          { namePrefix: 'PicoW' },
+          { services: [SERVICE_UUID] }
+        ],
+        optionalServices: [SERVICE_UUID]
+      });
+
+      bleDevice.addEventListener('gattserverdisconnected', onDisconnected);
+
+      setConnState('pend', 'connecting GATT...');
+      log(`Selected: ${bleDevice.name || '(unnamed)'}`);
+
+      const server = await bleDevice.gatt.connect();
+      const service = await server.getPrimaryService(SERVICE_UUID);
+      bleChar = await service.getCharacteristic(CHAR_UUID);
+
+      await bleChar.startNotifications();
+      bleChar.addEventListener('characteristicvaluechanged', onNotify);
+
+      setConnState('ok', `connected: ${bleDevice.name}`);
+      log('Connected. Notifications enabled.', 'sys');
+
+      // Ask for current state right away.
+      await send('STATUS');
+    } catch (err) {
+      console.error(err);
+      setConnState('err', 'connection failed');
+      log('Connect error: ' + err.message, 'err');
+    }
+  }
+
+  function onDisconnected() {
+    log('Device disconnected.', 'err');
+    bleChar = null;
+    setConnState('', 'disconnected');
+  }
+
+  async function disconnect() {
+    try {
+      if (bleDevice && bleDevice.gatt.connected) bleDevice.gatt.disconnect();
+    } catch (e) { /* ignore */ }
+    bleChar = null;
+    setConnState('', 'disconnected');
+  }
+
+  btnConnect.addEventListener('click', connect);
+  btnDisconnect.addEventListener('click', disconnect);
+
+  // ===== Notifications =====
+  function onNotify(e) {
+    const bytes = new Uint8Array(e.target.value.buffer);
+    const text = decoder.decode(bytes);
+    log('< ' + text, text.startsWith('ERR') ? 'err' : 'rx');
+    if (text.startsWith('STATE|')) parseState(text);
+  }
+
+  function parseState(text) {
+    const kv = {};
+    text.slice(6).split('|').forEach(tok => {
+      const [k, v] = tok.split('=');
+      kv[k] = v;
+    });
+    $('st_running').textContent = kv.running === '1' ? 'YES' : 'no';
+    $('st_running').style.color = kv.running === '1' ? 'var(--accent)' : 'var(--muted)';
+    $('st_f1').textContent   = kv.f1 !== undefined ? Number(kv.f1).toFixed(2) + ' Hz' : '—';
+    $('st_f2').textContent   = kv.f2 !== undefined ? Number(kv.f2).toFixed(2) + ' Hz' : '—';
+    $('st_beat').textContent = kv.beat !== undefined ? Number(kv.beat).toFixed(3) + ' Hz' : '—';
+    $('st_ac').textContent   = (kv.amp && kv.center)
+        ? `${Number(kv.amp).toFixed(2)} V / ${Number(kv.center).toFixed(2)} V`
+        : '—';
+  }
+
+  // ===== Send =====
+  async function send(cmd) {
+    if (!bleChar) { log('Not connected.', 'err'); return; }
+    try {
+      log('> ' + cmd, 'tx');
+      await bleChar.writeValue(encoder.encode(cmd));
+    } catch (err) {
+      log('Write failed: ' + err.message, 'err');
+    }
+  }
+
+  // ===== Tab switching =====
+  document.querySelectorAll('.tab').forEach(t => {
+    t.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+      t.classList.add('active');
+      currentMode = t.dataset.mode;
+      ['ti', 'beat', 'single'].forEach(m => {
+        $('pane-' + m).style.display = (m === currentMode) ? '' : 'none';
+      });
+      updateDerived();
+    });
+  });
+
+  // ===== Link slider <-> number inputs =====
+  function bindPair(rangeId, numId, onChange) {
+    const r = $(rangeId), n = $(numId);
+    r.addEventListener('input', () => { n.value = r.value; onChange && onChange(); });
+    n.addEventListener('input', () => { r.value = n.value; onChange && onChange(); });
+  }
+  bindPair('ti_f1', 'ti_f1_n', updateDerived);
+  bindPair('ti_f2', 'ti_f2_n', updateDerived);
+  bindPair('bt_center', 'bt_center_n', updateDerived);
+  bindPair('bt_beat', 'bt_beat_n', updateDerived);
+  bindPair('s_f', 's_f_n', updateDerived);
+  bindPair('amp', 'amp_n', updateDerived);
+  bindPair('center', 'center_n', updateDerived);
+  bindPair('ramp', 'ramp_n');
+
+  function updateDerived() {
+    const amp = Number($('amp_n').value);
+    const ctr = Number($('center_n').value);
+    let beat = NaN, centerF = NaN;
+
+    if (currentMode === 'ti') {
+      const f1 = Number($('ti_f1_n').value);
+      const f2 = Number($('ti_f2_n').value);
+      beat = Math.abs(f1 - f2);
+      centerF = (f1 + f2) / 2;
+    } else if (currentMode === 'beat') {
+      beat = Number($('bt_beat_n').value);
+      centerF = Number($('bt_center_n').value);
+    } else {
+      beat = 0;
+      centerF = Number($('s_f_n').value);
+    }
+
+    $('m_beat').textContent   = isNaN(beat) ? '—' : beat.toFixed(3) + ' Hz';
+    $('m_center').textContent = isNaN(centerF) ? '—' : centerF.toFixed(1) + ' Hz';
+
+    const lo = Math.max(0, ctr - amp);
+    const hi = Math.min(3.3, ctr + amp);
+    $('m_swing').textContent = `${lo.toFixed(2)}–${hi.toFixed(2)} V`;
+  }
+  updateDerived();
+
+  // ===== Build + send commands =====
+  function fmt(n) { return Number(n).toString(); }
+
+  btnStart.addEventListener('click', async () => {
+    const amp = fmt($('amp_n').value);
+    const ctr = fmt($('center_n').value);
+    const ramp = fmt($('ramp_n').value);
+    if (currentMode === 'ti') {
+      const f1 = fmt($('ti_f1_n').value);
+      const f2 = fmt($('ti_f2_n').value);
+      await send(`TI|${f1}|${f2}|${amp}|${ctr}|${ramp}`);
+    } else if (currentMode === 'beat') {
+      const c = fmt($('bt_center_n').value);
+      const b = fmt($('bt_beat_n').value);
+      await send(`BEAT|${c}|${b}|${amp}|${ctr}|${ramp}`);
+    } else {
+      const dac = $('s_dac').value;
+      const f = fmt($('s_f_n').value);
+      await send(`SINE${dac}|${f}|${amp}|${ctr}|${ramp}`);
+    }
+  });
+
+  btnUpdate.addEventListener('click', async () => {
+    let f1, f2;
+    if (currentMode === 'ti') {
+      f1 = fmt($('ti_f1_n').value);
+      f2 = fmt($('ti_f2_n').value);
+    } else if (currentMode === 'beat') {
+      const c = Number($('bt_center_n').value);
+      const b = Number($('bt_beat_n').value);
+      f1 = fmt(c - b / 2);
+      f2 = fmt(c + b / 2);
+    } else {
+      log('UPDATE is only for dual-sine modes.', 'err');
+      return;
+    }
+    await send(`UPDATE|${f1}|${f2}`);
+  });
+
+  btnStop.addEventListener('click',   () => send(`STOP|${fmt($('ramp_n').value)}`));
+  btnZero.addEventListener('click',   () => send('ZERO'));
+  btnWake.addEventListener('click',   () => send('WAKE'));
+  btnEstop.addEventListener('click',  () => send('ESTOP'));
+  btnPing.addEventListener('click',   () => send('PING'));
+  btnStatus.addEventListener('click', () => send('STATUS'));
+
+  // Initial UI state
+  setConnState('', 'disconnected');
+</script>
+</body>
+</html>
